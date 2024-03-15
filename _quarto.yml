@@ -1,0 +1,28 @@
+project:
+  type: book
+  output-dir: ../../../reports/analysis/quarto-book
+
+book:
+  title: "Quarto Book"
+  author: "Trevor F. Freeman"
+  date: ""
+  chapters:
+    - index.qmd
+    - intro.qmd
+    - part: "Content"
+      chapters:
+        - content/content.qmd
+    - summary.qmd
+    - references/references.qmd
+
+date-modified: now
+date-format: long
+
+profile:
+  group:
+    - [report]
+  default: report,dev
+
+callout-appearance: simple
+
+bibliography: references/references.bib

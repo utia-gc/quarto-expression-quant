@@ -1,0 +1,7 @@
+execute:
+  message: true
+  warning: true
+
+format:
+  html:
+    embed-resources: true
