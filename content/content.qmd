@@ -1,5 +1,0 @@
-# Content
-
-This is the content for a basic quarto book.
-
-Replace this document with your own content.

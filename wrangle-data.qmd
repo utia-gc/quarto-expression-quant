@@ -1,0 +1,82 @@
+---
+params:
+  # path to Excel file to store counts, sample data, results, etc.
+  db_path: !expr here::here("data", "rnaseq-expression-analysis.xlsx")
+  # path to stored counts data file
+  counts_path: !expr here::here("data", "counts", "")
+  # path to sample (meta)data
+  samples_path: !expr here::here("data", "samples", "")
+---
+
+# Wrangle data, fit model, and extract results {.unnumbered}
+
+```{r}
+#| label: attach-packages-modules
+#| code-summary: "Attach packages and modules"
+
+# start w/ a clean session
+box::purge_cache()
+
+# attach packages
+box::use(
+  data.table[fread],
+  here[here],
+  janitor[clean_names],
+  openxlsx2[wb_workbook],
+  tibble[column_to_rownames]
+)
+
+# attach local modules
+options(box.path = here("src", "R"))
+box::use()
+```
+
+
+## Counts
+
+```{r}
+#| label: read-counts
+#| code-summary: "Read counts"
+
+counts <- params$counts_path |> 
+  fread(data.table = FALSE) |> 
+  clean_names() |> 
+  column_to_rownames(var = "geneid") |> 
+  as.matrix()
+```
+
+
+## Samples
+
+```{r}
+#| label: read-tidy-samples
+#| code-summary: "Read and tidy blood samples data"
+
+samples <- params$samples_path |>
+  read.csv() |> 
+  clean_names()
+```
+
+
+## Write data
+
+Write data to Excel workbook.
+
+```{r}
+#| label: write-excel
+#| code-summary: "Write counts and samples to Excel"
+
+# create workbook
+wb <- wb_workbook()
+
+# add counts table
+wb$add_worksheet(sheet = "counts")
+wb$add_data(sheet = "counts", x = counts, row_names = TRUE)
+
+# add samples data table
+wb$add_worksheet(sheet = "samples")
+wb$add_data(sheet = "samples", x = samples)
+
+# write workbook
+wb$save(file = params$db_path)
+```
