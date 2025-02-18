@@ -1,27 +1,36 @@
 project:
   type: book
-  output-dir: ../../../reports/analysis/quarto-book
 
 book:
-  title: "Quarto Book"
   author: "Trevor F. Freeman"
   date: ""
   chapters:
     - index.qmd
-    - intro.qmd
-    - part: "Content"
-      chapters:
-        - content/content.qmd
+    - wrangle-data.qmd
+    - descriptive-stats.qmd
     - summary.qmd
     - references/references.qmd
 
-date-modified: now
-date-format: long
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-expand: 2
+    toc-location: left
+    code-fold: true
+    code-summary: "Show code"
+    theme: cosmo
+    fig-cap-location: bottom
+    df-print: paged
+    page-layout: full
 
 profile:
   group:
-    - [report]
-  default: report,dev
+    - [dev, prod]
+  default: dev
+
+date-modified: now
+date-format: long
 
 callout-appearance: simple
 

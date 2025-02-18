@@ -1,3 +1,6 @@
+project:
+  output-dir: "../../../reports/rnaseq-expression-analysis"
+  
 execute:
   cache: false
   message: false
