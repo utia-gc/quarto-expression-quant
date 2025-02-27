@@ -1,6 +1,7 @@
 {
     "project_slug": "rnaseq-expression-analysis",
-    "_copy_without_render": [
-        "{{ cookiecutter.project_slug }}/references/references.qmd"
-    ]
+    "_jinja2_env_vars": {
+        "comment_start_string": "{=",
+        "comment_end_string": "=}"
+    }
 }
