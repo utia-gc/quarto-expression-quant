@@ -1,6 +1,6 @@
 {
     "project_slug": "rnaseq-expression-analysis",
     "_copy_without_render": [
-        "{{ cookiecutter.project_slug }}/*"
+        "{{ cookiecutter.project_slug }}/references/references.qmd"
     ]
 }
