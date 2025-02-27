@@ -1,0 +1,7 @@
+{
+    "project_slug": "rnaseq-expression-analysis",
+    "_jinja2_env_vars": {
+        "comment_start_string": "{=",
+        "comment_end_string": "=}"
+    }
+}
