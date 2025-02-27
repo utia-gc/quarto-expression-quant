@@ -1,3 +1,6 @@
 {
-    "project_slug": "rnaseq-expression-analysis"
+    "project_slug": "rnaseq-expression-analysis",
+    "_copy_without_render": [
+        "{{ cookiecutter.project_slug }}/*"
+    ]
 }
