@@ -1,11 +1,15 @@
 ---
 params:
-  # path to Excel file to store counts, sample data, results, etc.
-  db_path: !expr here::here("data", "rnaseq-expression-analysis.xlsx")
   # path to stored counts data file
   counts_path: !expr here::here("data", "counts", "")
   # path to sample (meta)data
   samples_path: !expr here::here("data", "samples", "")
+  # minimum count required for for low expression filtering. supplied to edgeR::filterByExpr
+  min_count: 10
+  # path to raw (unfiltered) SummarizedExperiment object
+  se_raw_path: !expr here::here("data", "expression-analysis", "summarized-experiment-raw.rds")
+  # path to filtered SummarizedExperiment object
+  se_filt_path: !expr here::here("data", "expression-analysis", "summarized-experiment-filt.rds")
 ---
 
 # Wrangle data, fit model, and extract results {.unnumbered}
@@ -19,11 +23,11 @@ box::purge_cache()
 
 # attach packages
 box::use(
-  data.table[fread],
+  davizr[read_counts_file, write_se],
+  DESeq2[rlogTransformation, varianceStabilizingTransformation],
+  edgeR[filterByExpr],
   here[here],
-  janitor[clean_names],
-  openxlsx2[wb_workbook],
-  tibble[column_to_rownames]
+  janitor[clean_names]
 )
 
 # attach local modules
@@ -32,21 +36,23 @@ box::use()
 ```
 
 
-## Counts
+## Read data
+
+### Counts
+
+Read counts data from file.
 
 ```{r}
 #| label: read-counts
 #| code-summary: "Read counts"
 
-counts <- params$counts_path |> 
-  fread(data.table = FALSE) |> 
-  clean_names() |> 
-  column_to_rownames(var = "geneid") |> 
-  as.matrix()
+counts <- read_counts_file(params$counts_path)
 ```
 
 
-## Samples
+### Samples
+
+Read samples data from file.
 
 ```{r}
 #| label: read-tidy-samples
@@ -58,25 +64,70 @@ samples <- params$samples_path |>
 ```
 
 
-## Write data
+## Construct `SummarizedExperiment`
 
-Write data to Excel workbook.
+The `SummarizedExperiment` class is the class of choice for bulk RNA-seq analysis.
+Essentially every major RNA-seq analysis workflow in R can work directly with objects of type `SummarizedExperiment`.
+
+In this analysis, we use the `SummarizedExperiment` class as our singlular, ground truth data object.
 
 ```{r}
-#| label: write-excel
-#| code-summary: "Write counts and samples to Excel"
+#| label: construct-summarized-experiment
+#| code-summary: "Construct Summarized Experiment"
 
-# create workbook
-wb <- wb_workbook()
+# construct SummarizedExperiment
+se <- SummarizedExperiment(
+  assays = list(counts = counts),
+  colData = samples
+)
 
-# add counts table
-wb$add_worksheet(sheet = "counts")
-wb$add_data(sheet = "counts", x = counts, row_names = TRUE)
+# add library sizes to SummarizedExperiment
+se[["lib_size_raw"]] <- colSums(assay(se, "counts"))
+```
 
-# add samples data table
-wb$add_worksheet(sheet = "samples")
-wb$add_data(sheet = "samples", x = samples)
 
-# write workbook
-wb$save(file = params$db_path)
+### Write `SummarizedExperiment`
+
+```{r}
+#| label: write-summarized-experiment
+#| code-summary: Write `SummarizedExperiment`"
+
+write_se(se, params$se_raw_path)
+```
+
+
+## Filter genes
+
+Filter genes with low expression.
+
+```{r}
+#| label: filter-low-expression-genes
+#| code-summary: "Filter low expression genes"
+
+keep_exprs <- filterByExpr(se, group = se$group, min.count = params$min_count)
+se_filt <- se[keep_exprs, ]
+
+# compute library size for filtered SummarizedExperiment
+se_filt[["lib_size_filt"]] <- colSums(assay(se_filt, "counts"))
+```
+
+
+Transform filtered counts.
+
+```{r}
+#| label: transform-filtered-counts
+#| code-summary: "Transform filtered counts"
+
+SummarizedExperiment::assay(se_filt, "rld") <- rlogTransformation(assay(se_filt, "counts"))
+SummarizedExperiment::assay(se_filt, "vsd") <- varianceStabilizingTransformation(assay(se_filt, "counts"))
+```
+
+
+### Write `SummarizedExperiment`
+
+```{r}
+#| label: write-summarized-experiment-filt
+#| code-summary: "Write filtered `SummarizedExperiment`"
+
+write_se(se_filt, params$se_filt_path)
 ```
