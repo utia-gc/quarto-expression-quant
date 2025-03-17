@@ -7,7 +7,6 @@ book:
   chapters:
     - index.qmd
     - wrangle-data.qmd
-    - descriptive-stats.qmd
     - summary.qmd
     - references/references.qmd
 
@@ -26,8 +25,8 @@ format:
 
 profile:
   group:
-    - [dev, prod]
-  default: dev
+    - [exploratory, production]
+  default: exploratory
 
 date-modified: now
 date-format: long
