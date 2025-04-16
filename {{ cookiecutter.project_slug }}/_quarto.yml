@@ -6,7 +6,7 @@ book:
   date: ""
   chapters:
     - index.qmd
-    - wrangle-data.qmd
+    - 01-wrangle-data.qmd
     - summary.qmd
     - references/references.qmd
 
