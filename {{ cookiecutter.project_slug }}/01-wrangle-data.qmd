@@ -22,7 +22,7 @@ params:
   se_postfilter_path: "data/expression-analysis/summarized-experiment-postfilter.rds"
 ---
 
-# Wrangle data, fit model, and extract results {.unnumbered}
+# Wrangle Data {.unnumbered}
 
 ```{r}
 #| label: attach-packages-modules
