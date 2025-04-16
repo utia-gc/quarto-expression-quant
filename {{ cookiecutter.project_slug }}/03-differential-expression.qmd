@@ -1,0 +1,150 @@
+---
+params:
+  # all paths must be relative to the base of the project directory, i.e. where .Rproj file is
+  # path to SummarizedExperiment object to use for the analysis
+  se_path: "data/expression-analysis/summarized-experiment-postfilter.rds"
+  # significance threshold for DEGs, i.e. results table adjusted p-values
+  alpha: 0.05
+---
+
+# Differential expression analysis -- HP {.unnumbered}
+
+```{r}
+#| label: attach-packages-modules
+#| code-summary: "Attach packages and modules"
+
+# start w/ a clean session
+box::purge_cache()
+
+# attach packages
+box::use(
+  edgeR[calcNormFactors, SE2DGEList],
+  ggplot2[theme_bw, theme_set],
+  here[here],
+  limma[contrasts.fit, decideTests, eBayes, lmFit, makeContrasts, voom],
+  stats[model.matrix],
+  SummarizedExperiment[colData],
+  variancePartition[plotContrasts]
+)
+
+# set ggplot2 theme
+theme_set(theme_bw())
+
+# attach local modules
+options(box.path = here("src", "R"))
+box::use()
+```
+
+
+## Prepare data
+
+### Read expression and sample data
+
+```{r}
+#| label: read-summarized-experiment
+#| code-summary: "Read SummarizedExperiment"
+
+# construct SummarizedExperiment
+se <- readRDS(here(params$se_path))
+
+# add design formula to SummarizedExperiment
+S4Vectors::metadata(se)[["modeling"]][["design"]][["formula"]] <- ~ 1
+```
+
+
+## Call DEGs
+
+Call the differentially expressed genes (DEGs) for the contrasts of interest.
+
+### Construct differential expression analysis inputs
+
+Construct data structures that are used as input to differential expression analysis.
+This includes constructing the design and contrasts matrices for statistical modeling.
+This facilitates extracting the linear model results of interest.
+
+```{r}
+#| label: construct-de-input-data-structures
+#| code-summary: "Construct data structures for differential expression analysis input"
+
+# make design matrix
+design <- model.matrix(
+  S4Vectors::metadata(se)[["modeling"]][["design"]][["formula"]], 
+  data = colData(se)
+)
+
+# make contrasts matrix
+contrasts_matrix <- makeContrasts(
+  Intercept = (Intercept),
+  levels = design
+)
+```
+
+
+```{r}
+#| label: fig-contrasts-matrix
+#| code-summary: "Plot contrasts matrix"
+#| fig-cap: "Graphical representation of coefficients for each named linear contrast."
+
+# visualize contrasts matrix
+plotContrasts(contrasts_matrix)
+```
+
+
+### `limma-voom`
+
+#### Fit linear model
+
+Fit the `limma` linear model.
+
+This performs three necessary steps in the analysis:
+
+1. Transform counts to log2-CPM with the mean-variance relationship modeled with observation-level weights using `limma::voom()`.
+2. Estimate regression coefficients for each gene with a linear model.
+3. Computation of moderated test statistics (t-statistics or F-statistics) and log-odds of differential expression with empirical Bayes moderation.
+
+```{r}
+#| label: fig-run-limma-workflow
+#| code-summary: "Runna limma-voom workflow"
+#| fig-cap: "Plot `limma-voom` mean-variance trend."
+
+# transform counts to log2-CPM with mean-variance trend weights
+voom_obj <- se |> 
+  SE2DGEList() |> 
+  calcNormFactors() |> 
+  voom(design = design, plot = TRUE)
+
+e_fit <- voom_obj |> 
+  # fit linear model
+  lmFit(design = design) |> 
+  contrasts.fit(contrasts = contrasts_matrix) |>
+  # compute moderated test statistics
+  eBayes()
+```
+
+
+#### Extract results
+
+Build database of results extracted from model fit.
+
+```{r}
+decideTests(e_fit, p.value = params$alpha) |> 
+  summary() |> 
+  t()
+```
+
+
+#### `DESeq2`
+
+```{r}
+dds <- DESeq2::DESeqDataSet(se, design = design) |> 
+  DESeq2::DESeq()
+
+purrr::walk(
+  colnames(contrasts_matrix),
+  function(contrast) {
+    cat(contrast)
+    DESeq2::results(dds, contrast = contrasts_matrix[, contrast], independentFiltering = FALSE, alpha = params$alpha) |> 
+      DESeq2::summary(alpha = params$alpha)
+  }
+)
+```

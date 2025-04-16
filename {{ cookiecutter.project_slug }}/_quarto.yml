@@ -8,6 +8,7 @@ book:
     - index.qmd
     - 01-wrangle-data.qmd
     - 02-descriptive-stats.qmd
+    - 03-differential-expression.qmd
     - summary.qmd
     - references/references.qmd
 
