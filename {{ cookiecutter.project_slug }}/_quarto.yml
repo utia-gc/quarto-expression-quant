@@ -7,6 +7,7 @@ book:
   chapters:
     - index.qmd
     - 01-wrangle-data.qmd
+    - 02-descriptive-stats.qmd
     - summary.qmd
     - references/references.qmd
 
