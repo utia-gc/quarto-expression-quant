@@ -1,15 +1,25 @@
 ---
 params:
+  # all paths must be relative to the base of the project directory, i.e. where .Rproj file is
   # path to stored counts data file
-  counts_path: !expr here::here("data", "counts", "")
+  counts_path: ""
   # path to sample (meta)data
-  samples_path: !expr here::here("data", "samples", "")
+  samples_path: ""
+  # variables to set in SummarizedExperiment, character vector delimited by ";"
+  interest_vars: ""
+  nuisance_vars: ""
+  screening_vars: ""
+  # formulas for variance partitioning analysis, character vector structured as an lmer style formula
+  vp_formula_explanatory: "~ "
+  vp_formula_all: "~ "
   # minimum count required for for low expression filtering. supplied to edgeR::filterByExpr
   min_count: 10
-  # path to raw (unfiltered) SummarizedExperiment object
-  se_raw_path: !expr here::here("data", "expression-analysis", "summarized-experiment-raw.rds")
-  # path to filtered SummarizedExperiment object
-  se_filt_path: !expr here::here("data", "expression-analysis", "summarized-experiment-filt.rds")
+  # whether or not to overwrite to SummarizedExperiment files
+  overwrite_se: true
+  # path to prefiltered SummarizedExperiment object
+  se_prefilter_path: "data/expression-analysis/summarized-experiment-prefilter.rds"
+  # path to postfiltered SummarizedExperiment object
+  se_postfilter_path: "data/expression-analysis/summarized-experiment-postfilter.rds"
 ---
 
 # Wrangle data, fit model, and extract results {.unnumbered}
@@ -23,42 +33,73 @@ box::purge_cache()
 
 # attach packages
 box::use(
-  davizr[read_counts_file, write_se],
+  davizr[
+    add_library_size,
+    construct_se,
+    plot_logcpm_density,
+    read_counts_file,
+    set_aesthetics,
+    set_formula,
+    write_se
+  ],
   DESeq2[rlogTransformation, varianceStabilizingTransformation],
+  DT[datatable],
   edgeR[filterByExpr],
+  ggplot2[theme_bw, theme_set],
   here[here],
-  janitor[clean_names]
+  janitor[clean_names],
+  qreport[maketabs],
+  stats[setNames],
+  tibble[tribble]
 )
+
+# set ggplot2 theme
+theme_set(theme_bw())
 
 # attach local modules
 options(box.path = here("src", "R"))
 box::use()
 ```
 
-
 ## Read data
 
 ### Counts
 
-Read counts data from file.
+Read counts table from file.
 
 ```{r}
 #| label: read-counts
 #| code-summary: "Read counts"
 
-counts <- read_counts_file(params$counts_path)
+counts <- read_counts_file(here(params$counts_path))
+```
+
+
+Drop samples from counts matrix.
+
+```{r}
+#| label: drop-counts-samples
+#| code-summary: "Drop samples from counts matrix"
+
+# list samples to drop
+samples_drop <- c()
+
+# get names of samples to keep
+samples_keep <- colnames(counts)[!(colnames(counts) %in% samples_drop)]
+
+# filter counts matrix columns to retain samples we want
+counts <- counts[, samples_keep]
 ```
 
 
 ### Samples
 
-Read samples data from file.
-
 ```{r}
 #| label: read-tidy-samples
 #| code-summary: "Read and tidy blood samples data"
 
-samples <- params$samples_path |>
+samples <- params$samples_path |> 
+  here() |> 
   read.csv() |> 
   clean_names()
 ```
@@ -69,20 +110,45 @@ samples <- params$samples_path |>
 The `SummarizedExperiment` class is the class of choice for bulk RNA-seq analysis.
 Essentially every major RNA-seq analysis workflow in R can work directly with objects of type `SummarizedExperiment`.
 
-In this analysis, we use the `SummarizedExperiment` class as our singlular, ground truth data object.
+In this analysis, we use the `SummarizedExperiment` class as our singular, ground truth data object.
 
 ```{r}
 #| label: construct-summarized-experiment
-#| code-summary: "Construct Summarized Experiment"
+#| code-summary: "Construct `SummarizedExperiment`"
 
 # construct SummarizedExperiment
-se <- SummarizedExperiment(
-  assays = list(counts = counts),
-  colData = samples
-)
+se <- construct_se(
+  counts = counts,
+  samples = samples,
+  library_size_var = "library_size_prefilter",
+  interest_variables = strsplit(params$interest_vars, split = ";")[[1]],
+  nuisance_variables = strsplit(params$nuisance_vars, split = ";")[[1]],
+  screening_variables = strsplit(params$screening_vars, split = ";")[[1]]
+) |> 
+  # add formulas for modeling
+  set_formula(name = "vp_explanatory", as.formula(params$vp_formula_explanatory)) |> 
+  set_formula(name = "vp_all", as.formula(params$vp_formula_all))
 
-# add library sizes to SummarizedExperiment
-se[["lib_size_raw"]] <- colSums(assay(se, "counts"))
+# set aesthetics
+se <- se |> 
+  # set color aesthetics for explanatory variables
+  set_aesthetics(
+    variable = "group",
+    values = setNames(
+      c(),
+      levels(se[["group"]])
+    ),
+    aesthetic = "color"
+  ) |> 
+  # set shape aesthetics for explanatory variables
+  set_aesthetics(
+    variable = "group",
+    values = setNames(
+      c(),
+      levels(se[["group"]])
+    ),
+    aesthetic = "shape"
+  )
 ```
 
 
@@ -90,9 +156,9 @@ se[["lib_size_raw"]] <- colSums(assay(se, "counts"))
 
 ```{r}
 #| label: write-summarized-experiment
-#| code-summary: Write `SummarizedExperiment`"
+#| code-summary: "Write `SummarizedExperiment`"
 
-write_se(se, params$se_raw_path)
+write_se(se, here(params$se_prefilter_path), overwrite = params$overwrite_se)
 ```
 
 
@@ -101,16 +167,26 @@ write_se(se, params$se_raw_path)
 Filter genes with low expression.
 
 ```{r}
-#| label: filter-low-expression-genes
+#| label: tbl-filter-low-expression-genes
 #| code-summary: "Filter low expression genes"
 
 keep_exprs <- filterByExpr(se, group = se$group, min.count = params$min_count)
 se_filt <- se[keep_exprs, ]
 
 # compute library size for filtered SummarizedExperiment
-se_filt[["lib_size_filt"]] <- colSums(assay(se_filt, "counts"))
+se_filt <- add_library_size(se_filt, library_size_var = "library_size_postfilter")
+
+# make breakdown of filtering by gene expression
+tribble(
+  ~`Dataset`, ~`Number of genes remaining`,
+  "Prefiltered", as.character(nrow(se)),
+  "Postfiltered", as.character(nrow(se_filt))
+) |> 
+  datatable()
 ```
 
+
+### Transform counts
 
 Transform filtered counts.
 
@@ -123,11 +199,31 @@ SummarizedExperiment::assay(se_filt, "vsd") <- varianceStabilizingTransformation
 ```
 
 
+```{r}
+#| label: fig-logcpm-density
+#| code-summary: "log(CPM) densities"
+#| output: asis
+
+logcpm_density_all_genes_plot <- plot_logcpm_density(se)
+if (interactive()) logcpm_density_all_genes_plot
+
+logcpm_density_filt_genes_plot <- plot_logcpm_density(se_filt)
+if (interactive()) logcpm_density_filt_genes_plot
+
+if (!interactive()) {
+  maketabs(
+    `All genes` ~ logcpm_density_all_genes_plot + caption("Distributions of log(CPM) transformed counts of reads within genes prior to filtering low expressed genes."),
+    `Filtered genes` ~ logcpm_density_filt_genes_plot + caption("Distributions of log(CPM) transformed counts of reads within genes after filtering low expressed genes.")
+  )
+}
+```
+
+
 ### Write `SummarizedExperiment`
 
 ```{r}
 #| label: write-summarized-experiment-filt
 #| code-summary: "Write filtered `SummarizedExperiment`"
 
-write_se(se_filt, params$se_filt_path)
+write_se(se_filt, here(params$se_postfilter_path), overwrite = params$overwrite_se)
 ```
